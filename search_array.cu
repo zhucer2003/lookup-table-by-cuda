@@ -59,7 +59,7 @@ __global__ void search_kernel(int len,int N, float *value_x, float* value_y, int
     float ymax = centery_list_d[i] + width;
     if (i<len){
       for (int j=0;j<N; j++){
-        if (value_x[j] > xmin && value_x[j]<=xmax &&
+        if (value_x[j] >= xmin && value_x[j]<=xmax &&
             value_y[j] > ymin && value_y[j]<=ymax)
           //index[j] = leaf_list_d[i];    
            index[j] = i;    
@@ -158,9 +158,9 @@ float C = x_nodes[0]*(y_nodes[1] - y_nodes[2]) + x_nodes[1]*(y_nodes[2] - y_node
 float D = -A*x_nodes[0] - B*y_nodes[0] - C*var[0];
 interp_value[i] = -(A*value_x[i] + B*value_y[i] + D)/C;
 
-    printf("%d %f %f %f %f %f %f %f %f\n",j, centerx_list_d[j], centery_list_d[j], xmin, ymin, xmax, ymin, xmax, ymax,  xmin, ymax, x_ref, y_ref);
-    printf("%f %f %f %f %f %f %f %f\n", value_x[i], value_y[i],x_nodes[0], y_nodes[0], x_nodes[1], y_nodes[1],  x_nodes[2], y_nodes[2] );
-    printf("%f %f %f %f %f %f %f\n", interp_value[i], var[0], var[1], var[2], A, B, C,D );
+   // printf("%d %f %f %f %f %f %f %f %f\n",j, centerx_list_d[j], centery_list_d[j], xmin, ymin, xmax, ymin, xmax, ymax,  xmin, ymax, x_ref, y_ref);
+   // printf("%f %f %f %f %f %f %f %f\n", value_x[i], value_y[i],x_nodes[0], y_nodes[0], x_nodes[1], y_nodes[1],  x_nodes[2], y_nodes[2] );
+   // printf("%f %f %f %f %f %f %f\n", interp_value[i], var[0], var[1], var[2], A, B, C,D );
    }
 }
 
@@ -181,7 +181,7 @@ int main( int argc, char** argv)
         
         ifstream myfile("RPTBDB.dat");
         myfile >> num_nodes;
-        myfile >> xmin >> xmax >> ymin >> ymax;
+        myfile >> ymin >> ymax >> xmin >> xmax;
         myfile >> num_leafs >> rootwidth >> rootwidth;
         
         unsigned int bytes; 
@@ -210,7 +210,6 @@ int main( int argc, char** argv)
 	     myfile >> T2_list[i] >> P2_list[i];
 	     myfile >> T3_list[i] >> P3_list[i];
 	     myfile >> T4_list[i] >> P4_list[i];
-             printf("%f %f %f %f\n", T1_list[i], T2_list[i], T3_list[i], T4_list[i]);
              }
 	}
 	myfile.close();
@@ -235,8 +234,8 @@ int main( int argc, char** argv)
         drndset(9);
         int index_cpu[100];
         for (int i=0; i < N; i++){
-		value_x[i] =drnd()*2.0 - 1.0;
-		value_y[i] = drnd()*600 +400;
+		value_x[i] = drnd()*600 + 400;
+		value_y[i] = drnd()*2.0 - 1.0;
 		value_x[i] = (value_x[i]-xmin)/(xmax-xmin);
 		value_y[i] = (value_y[i]-ymin)/(ymax-ymin);
                 index[i] = -1;
@@ -253,7 +252,7 @@ int main( int argc, char** argv)
            xmax = centerx_list[i] + width;
            ymax = centery_list[i] + width;
           for (int j=0;j<N;j++){
-           if (value_x[j] > xmin && value_x[j]<=xmax &&
+           if (value_x[j] >= xmin && value_x[j]<=xmax &&
             value_y[j]>ymin && value_y[j]<=ymax)
               //index_cpu[j] = leaf_list[i];
               index_cpu[j] = i ;

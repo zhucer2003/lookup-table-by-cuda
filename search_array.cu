@@ -67,6 +67,24 @@ __global__ void search_kernel(int len,int N, float *value_x, float* value_y, int
     }
    
 }
+
+
+void search_cpu(int len,int N, float *value_x, float* value_y, int *index_cpu, int *level_list, int* leaf_list, float* centerx_list, float *centery_list){
+       for (int i = 0; i< len; i++){
+           float width = pow(2.0,-level_list[i]);   
+           float xmin = centerx_list[i] - width;
+           float ymin = centery_list[i] - width;
+           float xmax = centerx_list[i] + width;
+           float ymax = centery_list[i] + width;
+          for (int j=0;j<N;j++){
+           if (value_x[j] >= xmin && value_x[j]<=xmax &&
+            value_y[j]>ymin && value_y[j]<=ymax)
+              //index_cpu[j] = leaf_list[i];
+              index_cpu[j] = i ;
+          }
+       }
+}
+    
 #if 1
 __global__ void interpolation(int N, float* value_x, float *value_y, int* index_g, int *level_list_d, float *centerx_list_d, float* centery_list_d,  float *T1_list_d, float* T2_list_d, float * T3_list_d, float* T4_list_d,float* interp_value){
 
@@ -96,27 +114,14 @@ __global__ void interpolation(int N, float* value_x, float *value_y, int* index_
 	    var[0] = T1_list_d[j];
 	    var[1] = x_ref>=y_ref? T2_list_d[j]: T3_list_d[j] ;
 	    var[2] = x_ref>=y_ref? T3_list_d[j]: T4_list_d[j];
-#if 0
-	   // demonstrate single variable
-	   float cof_z = ( x_nodes[1]- x_nodes[0] ) * ( y_nodes[2]- y_nodes[0] ) 
-		 - ( x_nodes[2]- x_nodes[0] ) * (y_nodes[1]- y_nodes[0] );
-	   
-	   float cof_y = (var[1] - var[0]) * ( x_nodes[2]- x_nodes[0] ) 
-			- (var[2] - var[0]) *( x_nodes[1]- x_nodes[0] ) ;
+	float A = y_nodes[0]*(var[1]- var[2])  +  y_nodes[1]*(var[2] - var[0]) +  y_nodes[2]*(var[0] - var[1]);
 
-	   float cof_x = (var[2]- var[0]) * (y_nodes[1]- y_nodes[0] )
-			 - (var[1] - var[0]) *( y_nodes[2]- y_nodes[0] ) ;
-	   
-	   interp_value[i] = var[0] - ((y_ref -y_nodes[0]) * cof_y +  ((x_ref-x_nodes[0]))*cof_x )/cof_z ;
-#endif 
-float A = y_nodes[0]*(var[1]- var[2])  +  y_nodes[1]*(var[2] - var[0]) +  y_nodes[2]*(var[0] - var[1]);
+	float B = var[0]*(x_nodes[1] - x_nodes[2]) + var[1]*(x_nodes[2] - x_nodes[0]) +  var[2]*(x_nodes[0] - x_nodes[1]);
 
-float B = var[0]*(x_nodes[1] - x_nodes[2]) + var[1]*(x_nodes[2] - x_nodes[0]) +  var[2]*(x_nodes[0] - x_nodes[1]);
+	float C = x_nodes[0]*(y_nodes[1] - y_nodes[2]) + x_nodes[1]*(y_nodes[2] - y_nodes[0]) + x_nodes[2]*(y_nodes[0] - y_nodes[1]);
 
-float C = x_nodes[0]*(y_nodes[1] - y_nodes[2]) + x_nodes[1]*(y_nodes[2] - y_nodes[0]) + x_nodes[2]*(y_nodes[0] - y_nodes[1]);
-
-float D = -A*x_nodes[0] - B*y_nodes[0] - C*var[0];
-interp_value[i] = -(A*value_x[i] + B*value_y[i] + D)/C;
+	float D = -A*x_nodes[0] - B*y_nodes[0] - C*var[0];
+	interp_value[i] = -(A*value_x[i] + B*value_y[i] + D)/C;
    }
 }
 #endif
@@ -149,18 +154,15 @@ void interpolation_cpu(int N, float* value_x, float *value_y, int* index_g, int 
 	    var[1] = x_ref>=y_ref? T2_list_d[j]: T3_list_d[j] ;
 	    var[2] = x_ref>=y_ref? T3_list_d[j]: T4_list_d[j];
 
-float A = y_nodes[0]*(var[1]- var[2])  +  y_nodes[1]*(var[2] - var[0]) +  y_nodes[2]*(var[0] - var[1]);
+	float A = y_nodes[0]*(var[1]- var[2])  +  y_nodes[1]*(var[2] - var[0]) +  y_nodes[2]*(var[0] - var[1]);
 
-float B = var[0]*(x_nodes[1] - x_nodes[2]) + var[1]*(x_nodes[2] - x_nodes[0]) +  var[2]*(x_nodes[0] - x_nodes[1]);
+	float B = var[0]*(x_nodes[1] - x_nodes[2]) + var[1]*(x_nodes[2] - x_nodes[0]) +  var[2]*(x_nodes[0] - x_nodes[1]);
 
-float C = x_nodes[0]*(y_nodes[1] - y_nodes[2]) + x_nodes[1]*(y_nodes[2] - y_nodes[0]) + x_nodes[2]*(y_nodes[0] - y_nodes[1]);
+	float C = x_nodes[0]*(y_nodes[1] - y_nodes[2]) + x_nodes[1]*(y_nodes[2] - y_nodes[0]) + x_nodes[2]*(y_nodes[0] - y_nodes[1]);
 
-float D = -A*x_nodes[0] - B*y_nodes[0] - C*var[0];
-interp_value[i] = -(A*value_x[i] + B*value_y[i] + D)/C;
+	float D = -A*x_nodes[0] - B*y_nodes[0] - C*var[0];
+	interp_value[i] = -(A*value_x[i] + B*value_y[i] + D)/C;
 
-   // printf("%d %f %f %f %f %f %f %f %f\n",j, centerx_list_d[j], centery_list_d[j], xmin, ymin, xmax, ymin, xmax, ymax,  xmin, ymax, x_ref, y_ref);
-   // printf("%f %f %f %f %f %f %f %f\n", value_x[i], value_y[i],x_nodes[0], y_nodes[0], x_nodes[1], y_nodes[1],  x_nodes[2], y_nodes[2] );
-   // printf("%f %f %f %f %f %f %f\n", interp_value[i], var[0], var[1], var[2], A, B, C,D );
    }
 }
 
@@ -234,31 +236,20 @@ int main( int argc, char** argv)
         drndset(9);
         int index_cpu[100];
         for (int i=0; i < N; i++){
-		value_x[i] = drnd()*600 + 400;
-		value_y[i] = drnd()*2.0 - 1.0;
+		value_x[i] = 500; //drnd()*600 + 400;
+		value_y[i] = 0.5; //drnd()*2.0 - 1.0;
 		value_x[i] = (value_x[i]-xmin)/(xmax-xmin);
 		value_y[i] = (value_y[i]-ymin)/(ymax-ymin);
                 index[i] = -1;
                 index_cpu[i]=-1;
                 interp[i] = -1;
                 interp_h[i] = -1;
-                cout << i << " " <<value_x[i] << " " << value_y[i]<<endl;
+                //cout << i << " " <<value_x[i] << " " << value_y[i]<<endl;
         }
-       
-       for (int i = 0; i< size; i++){
-           float width = pow(2.0,-level_list[i]);   
-           xmin = centerx_list[i] - width;
-           ymin = centery_list[i] - width;
-           xmax = centerx_list[i] + width;
-           ymax = centery_list[i] + width;
-          for (int j=0;j<N;j++){
-           if (value_x[j] >= xmin && value_x[j]<=xmax &&
-            value_y[j]>ymin && value_y[j]<=ymax)
-              //index_cpu[j] = leaf_list[i];
-              index_cpu[j] = i ;
-          }
-       }    
+     
+     search_cpu(size, N, value_x, value_y, index_cpu, level_list, leaf_list, centerx_list, centery_list);
      interpolation_cpu(N, value_x, value_y, index_cpu, level_list,centerx_list, centery_list, T1_list, T2_list, T3_list, T4_list,interp);
+    
     // allocate device memory and data
     cout << "allocating memory on GPU!" << endl;
     CUDA_CHK(cudaMalloc, ((void**) &level_list_d, size*sizeof(int)));

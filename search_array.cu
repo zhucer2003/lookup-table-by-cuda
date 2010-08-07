@@ -1,3 +1,28 @@
+/*
+CUDA search binary tree and bilinear interpolation in the triangle v1.0:
+
+Copyright (C) 2010 Brown University
+
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
+USA, or see <http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html>.
+
+Author: Zhu Xueyu
+*/
+
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,6 +31,8 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <time.h>
+
 #define CUDA_CHK(NAME, ARGS) { \
   cudaError_t cuda_err_code = NAME ARGS; \
   if (cuda_err_code != cudaSuccess) { \
@@ -226,7 +253,7 @@ int main( int argc, char** argv)
         float *value_x, *value_y, *value_x_d, *value_y_d, *interp_h, *interp_d, *interp;
        
         //rescale the input the data 
-        int N= 100;
+        int N= 10000;
         value_x = (float *) malloc( N*dbytes);
         value_y = (float *) malloc( N*dbytes);
         index = (int *) malloc( N*sizeof(int));
@@ -234,10 +261,10 @@ int main( int argc, char** argv)
         interp = (float *) malloc( N*dbytes);
 
         drndset(9);
-        int index_cpu[100];
+        int index_cpu[10000];
         for (int i=0; i < N; i++){
-		value_x[i] = 500; //drnd()*600 + 400;
-		value_y[i] = 0.5; //drnd()*2.0 - 1.0;
+		value_x[i] = drnd()*600 + 400;
+		value_y[i] = drnd()*2.0 - 1.0;
 		value_x[i] = (value_x[i]-xmin)/(xmax-xmin);
 		value_y[i] = (value_y[i]-ymin)/(ymax-ymin);
                 index[i] = -1;
@@ -246,9 +273,12 @@ int main( int argc, char** argv)
                 interp_h[i] = -1;
                 //cout << i << " " <<value_x[i] << " " << value_y[i]<<endl;
         }
-     
-     search_cpu(size, N, value_x, value_y, index_cpu, level_list, leaf_list, centerx_list, centery_list);
-     interpolation_cpu(N, value_x, value_y, index_cpu, level_list,centerx_list, centery_list, T1_list, T2_list, T3_list, T4_list,interp);
+    
+    clock_t starttime, endtime; 
+    starttime = clock();
+    search_cpu(size, N, value_x, value_y, index_cpu, level_list, leaf_list, centerx_list, centery_list);
+    interpolation_cpu(N, value_x, value_y, index_cpu, level_list,centerx_list, centery_list, T1_list, T2_list, T3_list, T4_list,interp);
+    endtime = clock();
     
     // allocate device memory and data
     cout << "allocating memory on GPU!" << endl;
@@ -297,15 +327,25 @@ int main( int argc, char** argv)
 
     cout << "launching the kernel..." << endl;
     // run the kernel
-    int num_threads = 256;
-    int num_blocks = size/256 + 1;
+    int num_threads = 1024;
+    int num_blocks = size/num_threads + 1;
+
+    // measure the time
     
+    float time;
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);  cudaEventCreate(&stop);
+    cudaEventRecord(start, 0);
     // locate the cell
     search_kernel<<<num_blocks, num_threads>>>(size, N, value_x_d, value_y_d, index_g, level_list_d, leaf_list_d, centerx_list_d, centery_list_d); 
 
     printf("search kernel finished!\n");
 
     interpolation<<<num_blocks, num_threads>>>(N, value_x_d, value_y_d, index_g, level_list_d,centerx_list_d, centery_list_d, T1_list_d, T2_list_d, T3_list_d, T4_list_d,interp_d);
+   
+    cudaEventRecord(stop, 0);  cudaEventSynchronize(stop);  cudaEventElapsedTime(&time, start, stop);
+
+    cudaEventDestroy(start);  cudaEventDestroy(stop);
 
     printf("interpolation kernel finished!\n");
     
@@ -317,11 +357,17 @@ int main( int argc, char** argv)
     for (int i=0; i < N; i++){
     if (index[i]<0)
        printf("cell %d is not in this range!, cpu: %d\n", i, index_cpu[i]);
-    else
-       //printf("the value is cell : %d %d \n",index[i],index_cpu[i] ); 
-       printf("the value is cell : %d %d %f %f\n",index[i],index_cpu[i], interp_h[i], interp[i] ); 
-    }
     
+    //else
+       //printf("the value is cell : %d %d \n",index[i],index_cpu[i] ); 
+    //   printf("the value is cell : %d %d %f %f\n",index[i],index_cpu[i], interp_h[i], interp[i] ); 
+    }
+  
+    //output the time
+     printf("GPU %.1f ms\n", time);
+     printf("CPU %ld ms\n", (int) (1000.0f * (endtime - starttime) / CLOCKS_PER_SEC));
+
+  
     //clean up
 	CUDA_CHK(cudaFree, (level_list_d);  );
 	CUDA_CHK(cudaFree, (leaf_list_d);   );

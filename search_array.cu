@@ -41,6 +41,11 @@ Author: Zhu Xueyu
   } \
 }
 
+// using texture memory
+texture<float, 1, cudaReadModeElementType> texRef;
+texture<float, 1, cudaReadModeElementType> texRef2;
+texture<float, 1, cudaReadModeElementType> valx_t;
+texture<float, 1, cudaReadModeElementType> valy_t;
 //const int max_threads = 512;
 // input generation
 
@@ -80,19 +85,44 @@ __global__ void search_kernel(int len,int N, float *value_x, float* value_y, int
     
     i = threadIdx.x + blockIdx.x * blockDim.x;
     float width = powf(2.0,-level_list_d[i]);
+#if 0
     float xmin = centerx_list_d[i] - width;
     float ymin = centery_list_d[i] - width;
     float xmax = centerx_list_d[i] + width;
     float ymax = centery_list_d[i] + width;
-    if (i<len){
-      for (int j=0;j<N; j++){
-        if (value_x[j] >= xmin && value_x[j]<=xmax &&
-            value_y[j] > ymin && value_y[j]<=ymax)
+#endif
+#if 1
+    float xmin =tex1Dfetch(texRef, i)  - width;
+    float ymin =tex1Dfetch(texRef2, i)  - width;
+    float xmax = tex1Dfetch(texRef, i) + width;
+    float ymax = tex1Dfetch(texRef2, i) + width;
+    //float x_loc, y_loc;
+    __shared__ float x_loc[1024], y_loc[1024];
+#endif
+      int bound = max(N,len);
+      for (int m = 0;m<N/blockDim.x+1 ;m++)
+      { int k = m*blockDim.x + threadIdx.x;
+        if(k<N){
+        x_loc[threadIdx.x] = value_x[m*blockDim.x + threadIdx.x];
+        y_loc[threadIdx.x] = value_y[m*blockDim.x + threadIdx.x];
+        __syncthreads();  }
+ 
+    if (k<bound){
+      for (int j=0;j<blockDim.x; j++){
+        //if (value_x[j] >= xmin && value_x[j]<=xmax &&
+        //    value_y[j] > ymin && value_y[j]<=ymax)
+        //x_loc = tex1Dfetch(valx_t, j);
+        //y_loc = tex1Dfetch(valy_t, j);
+        //if (x_loc[j] >= xmin && x_loc[j]<=xmax &&
+        //    y_loc[j] > ymin && y_loc[j]<=ymax)
           //index[j] = leaf_list_d[i];    
-           index[j] = i;    
-      }
-    }
-   
+        if (x_loc[j] >= xmin && x_loc[j]<=xmax &&
+            y_loc[j] > ymin && y_loc[j]<=ymax)
+           index[j+m*blockDim.x] = k;    
+}
+
+        __syncthreads();   
+}}
 }
 
 
@@ -119,33 +149,47 @@ __global__ void interpolation(int N, float* value_x, float *value_y, int* index_
     if(i< N){
 	    int j = index_g[i];
 	    float width = powf(2.0,-level_list_d[j]);
+#if 0
 	    float xmin = centerx_list_d[j] - width;
 	    float ymin = centery_list_d[j] - width;
 	    float xmax = centerx_list_d[j] + width;
 	    float ymax = centery_list_d[j] + width; 
 
+#endif
+#if 1
+    float xmin =tex1Dfetch(texRef, i)  - width;
+    float ymin =tex1Dfetch(texRef2, i)  - width;
+    float xmax = tex1Dfetch(texRef, i) + width;
+    float ymax = tex1Dfetch(texRef2, i) + width;
+#endif
 	    // rescale x,y in the local cell
 	    float x_ref = (value_x[i]-xmin)/(xmax-xmin);
 	    float y_ref = (value_y[i]-ymin)/(ymax-xmin);
 	   
 	    // pickup the interpolation triangle 
-	    float x_nodes[3], y_nodes[3], var[3];
+            float x_nodes[3], y_nodes[3], var[3];
 	    x_nodes[0] = xmin;
-	    x_nodes[1] = x_ref>=y_ref?  xmax: xmax ;
+	    x_nodes[1] = xmax ;
 	    x_nodes[2] = x_ref>=y_ref?  xmax: xmin;
-
-	    y_nodes[0] = ymin;
+	    
+            y_nodes[0] = ymin;
 	    y_nodes[1] = x_ref>=y_ref? ymin:ymax ;
-	    y_nodes[2] = x_ref>=y_ref? ymax:ymax ;
-	   
-	    var[0] = T1_list_d[j];
+	    y_nodes[2] = ymax ;
+	    
+            var[0] = T1_list_d[j];
 	    var[1] = x_ref>=y_ref? T2_list_d[j]: T3_list_d[j] ;
 	    var[2] = x_ref>=y_ref? T3_list_d[j]: T4_list_d[j];
-	float A = y_nodes[0]*(var[1]- var[2])  +  y_nodes[1]*(var[2] - var[0]) +  y_nodes[2]*(var[0] - var[1]);
+	float A = y_nodes[0]*(var[1]- var[2])  
+                  +  y_nodes[1]*(var[2] - var[0]) 
+                  +  y_nodes[2]*(var[0] - var[1]);
 
-	float B = var[0]*(x_nodes[1] - x_nodes[2]) + var[1]*(x_nodes[2] - x_nodes[0]) +  var[2]*(x_nodes[0] - x_nodes[1]);
+	float B = var[0]*(x_nodes[1] - x_nodes[2])
+                   + var[1]*(x_nodes[2] - x_nodes[0])
+                   +  var[2]*(x_nodes[0] - x_nodes[1]);
 
-	float C = x_nodes[0]*(y_nodes[1] - y_nodes[2]) + x_nodes[1]*(y_nodes[2] - y_nodes[0]) + x_nodes[2]*(y_nodes[0] - y_nodes[1]);
+	float C = x_nodes[0]*(y_nodes[1] - y_nodes[2])
+                  + x_nodes[1]*(y_nodes[2] - y_nodes[0])
+                  + x_nodes[2]*(y_nodes[0] - y_nodes[1]);
 
 	float D = -A*x_nodes[0] - B*y_nodes[0] - C*var[0];
 	interp_value[i] = -(A*value_x[i] + B*value_y[i] + D)/C;
@@ -253,7 +297,7 @@ int main( int argc, char** argv)
         float *value_x, *value_y, *value_x_d, *value_y_d, *interp_h, *interp_d, *interp;
        
         //rescale the input the data 
-        int N= 10000;
+        int N=4*1000;
         value_x = (float *) malloc( N*dbytes);
         value_y = (float *) malloc( N*dbytes);
         index = (int *) malloc( N*sizeof(int));
@@ -261,7 +305,9 @@ int main( int argc, char** argv)
         interp = (float *) malloc( N*dbytes);
 
         drndset(9);
-        int index_cpu[10000];
+        int *index_cpu;
+        index_cpu = (int *) malloc( N*sizeof(int));
+
         for (int i=0; i < N; i++){
 		value_x[i] = drnd()*600 + 400;
 		value_y[i] = drnd()*2.0 - 1.0;
@@ -286,9 +332,16 @@ int main( int argc, char** argv)
     CUDA_CHK(cudaMalloc, ((void**) &leaf_list_d, size*sizeof(int)));
     CUDA_CHK(cudaMalloc, ((void**) &centerx_list_d, size*sizeof(float)));
     CUDA_CHK(cudaMalloc, ((void**) &centery_list_d, size*sizeof(float)));
+    
     CUDA_CHK(cudaMalloc, ((void**) &value_x_d, N*sizeof(float)));
     CUDA_CHK(cudaMalloc, ((void**) &value_y_d, N*sizeof(float)));
     CUDA_CHK(cudaMalloc, ((void**) &index_g, N*sizeof(int)));
+#if 1    
+    CUDA_CHK(cudaBindTexture, (0,texRef,centerx_list_d, size*sizeof(float)));
+    CUDA_CHK(cudaBindTexture, (0,texRef2,centery_list_d, size*sizeof(float)));
+    CUDA_CHK(cudaBindTexture, (0,valx_t,value_x_d, N*sizeof(float)));
+    CUDA_CHK(cudaBindTexture, (0,valy_t,value_y_d, N*sizeof(float)));
+#endif
 #if 1 
     CUDA_CHK(cudaMalloc, ((void**) &T1_list_d, fbytes));
     CUDA_CHK(cudaMalloc, ((void**) &T2_list_d, fbytes));
@@ -355,6 +408,7 @@ int main( int argc, char** argv)
 
     // check the result
     for (int i=0; i < N; i++){
+       assert(interp[i]=interp_h[i]);
     if (index[i]<0)
        printf("cell %d is not in this range!, cpu: %d\n", i, index_cpu[i]);
     
@@ -369,6 +423,9 @@ int main( int argc, char** argv)
 
   
     //clean up
+  CUDA_CHK(cudaUnbindTexture,(texRef));
+  CUDA_CHK(cudaUnbindTexture,(texRef2));
+
 	CUDA_CHK(cudaFree, (level_list_d);  );
 	CUDA_CHK(cudaFree, (leaf_list_d);   );
 	CUDA_CHK(cudaFree, (centerx_list_d););

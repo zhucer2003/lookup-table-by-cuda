@@ -82,47 +82,47 @@ static double drnd()
 __global__ void search_kernel(int len,int N, float *value_x, float* value_y, int *index, int *level_list_d, int* leaf_list_d, float* centerx_list_d, float *centery_list_d){
     
     int i;
-    
+    float xmin, ymin, xmax, ymax, width; 
     i = threadIdx.x + blockIdx.x * blockDim.x;
-    float width = powf(2.0,-level_list_d[i]);
-#if 0
-    float xmin = centerx_list_d[i] - width;
-    float ymin = centery_list_d[i] - width;
-    float xmax = centerx_list_d[i] + width;
-    float ymax = centery_list_d[i] + width;
+if (i<len){
+    width = powf(2.0,-level_list_d[i]);
+#if 1 
+    xmin = centerx_list_d[i] - width;
+    ymin = centery_list_d[i] - width;
+    xmax = centerx_list_d[i] + width;
+    ymax = centery_list_d[i] + width;
 #endif
-#if 1
+}
+#if 0 
     float xmin =tex1Dfetch(texRef, i)  - width;
     float ymin =tex1Dfetch(texRef2, i)  - width;
     float xmax = tex1Dfetch(texRef, i) + width;
     float ymax = tex1Dfetch(texRef2, i) + width;
     //float x_loc, y_loc;
-    __shared__ float x_loc[1024], y_loc[1024];
 #endif
+    const int s_width=1024;
+    __shared__ float x_loc[s_width], y_loc[s_width];
       int bound = max(N,len);
-      for (int m = 0;m<N/blockDim.x+1 ;m++)
-      { int k = m*blockDim.x + threadIdx.x;
-        if(k<N){
-        x_loc[threadIdx.x] = value_x[m*blockDim.x + threadIdx.x];
-        y_loc[threadIdx.x] = value_y[m*blockDim.x + threadIdx.x];
-        __syncthreads();  }
+      for (int m = 0;m<N/s_width +1 ;m++)
+      { 
+        int k = m*s_width + threadIdx.x;
+        if(k<N && threadIdx.x<s_width){
+         x_loc[threadIdx.x] = value_x[m*s_width + threadIdx.x];
+         y_loc[threadIdx.x] = value_y[m*s_width + threadIdx.x];
+        }
+        __syncthreads();  
  
-    if (k<bound){
-      for (int j=0;j<blockDim.x; j++){
-        //if (value_x[j] >= xmin && value_x[j]<=xmax &&
-        //    value_y[j] > ymin && value_y[j]<=ymax)
-        //x_loc = tex1Dfetch(valx_t, j);
-        //y_loc = tex1Dfetch(valy_t, j);
-        //if (x_loc[j] >= xmin && x_loc[j]<=xmax &&
-        //    y_loc[j] > ymin && y_loc[j]<=ymax)
-          //index[j] = leaf_list_d[i];    
-        if (x_loc[j] >= xmin && x_loc[j]<=xmax &&
-            y_loc[j] > ymin && y_loc[j]<=ymax)
-           index[j+m*blockDim.x] = k;    
-}
+        if (i< len){
+           for (int j=0;j<s_width ; j++){
+           if (x_loc[j] >= xmin && x_loc[j]<=xmax &&
+               y_loc[j] > ymin && y_loc[j]<=ymax )
+              index[j+m*s_width] = i;    
+             //index[j] = leaf_list_d[i];    
+            }
 
+        }
         __syncthreads();   
-}}
+      }
 }
 
 
@@ -149,14 +149,14 @@ __global__ void interpolation(int N, float* value_x, float *value_y, int* index_
     if(i< N){
 	    int j = index_g[i];
 	    float width = powf(2.0,-level_list_d[j]);
-#if 0
+#if 1
 	    float xmin = centerx_list_d[j] - width;
 	    float ymin = centery_list_d[j] - width;
 	    float xmax = centerx_list_d[j] + width;
 	    float ymax = centery_list_d[j] + width; 
 
 #endif
-#if 1
+#if 0
     float xmin =tex1Dfetch(texRef, i)  - width;
     float ymin =tex1Dfetch(texRef2, i)  - width;
     float xmax = tex1Dfetch(texRef, i) + width;
@@ -297,7 +297,7 @@ int main( int argc, char** argv)
         float *value_x, *value_y, *value_x_d, *value_y_d, *interp_h, *interp_d, *interp;
        
         //rescale the input the data 
-        int N=4*1000;
+        int N=200*1000;
         value_x = (float *) malloc( N*dbytes);
         value_y = (float *) malloc( N*dbytes);
         index = (int *) malloc( N*sizeof(int));
@@ -381,8 +381,8 @@ int main( int argc, char** argv)
     cout << "launching the kernel..." << endl;
     // run the kernel
     int num_threads = 1024;
-    int num_blocks = size/num_threads + 1;
-
+    int num_blocks = (size+ num_threads - 1)/num_threads ;
+    cout << size << " "<<  num_threads << " " << num_blocks << " here" << endl;
     // measure the time
     
     float time;

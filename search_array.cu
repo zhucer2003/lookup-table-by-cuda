@@ -86,21 +86,12 @@ __global__ void search_kernel(int len,int N, float *value_x, float* value_y, int
     i = threadIdx.x + blockIdx.x * blockDim.x;
 if (i<len){
     width = powf(2.0,-level_list_d[i]);
-#if 1 
     xmin = centerx_list_d[i] - width;
     ymin = centery_list_d[i] - width;
     xmax = centerx_list_d[i] + width;
     ymax = centery_list_d[i] + width;
-#endif
 }
-#if 0 
-    float xmin =tex1Dfetch(texRef, i)  - width;
-    float ymin =tex1Dfetch(texRef2, i)  - width;
-    float xmax = tex1Dfetch(texRef, i) + width;
-    float ymax = tex1Dfetch(texRef2, i) + width;
-    //float x_loc, y_loc;
-#endif
-    const int s_width=1024;
+    const int s_width=512;
     __shared__ float x_loc[s_width], y_loc[s_width];
       int bound = max(N,len);
       for (int m = 0;m<N/s_width +1 ;m++)
@@ -297,7 +288,7 @@ int main( int argc, char** argv)
         float *value_x, *value_y, *value_x_d, *value_y_d, *interp_h, *interp_d, *interp;
        
         //rescale the input the data 
-        int N=200*1000;
+        int N=100*1000;
         value_x = (float *) malloc( N*dbytes);
         value_y = (float *) malloc( N*dbytes);
         index = (int *) malloc( N*sizeof(int));
@@ -380,7 +371,7 @@ int main( int argc, char** argv)
 
     cout << "launching the kernel..." << endl;
     // run the kernel
-    int num_threads = 1024;
+    int num_threads = 512;
     int num_blocks = (size+ num_threads - 1)/num_threads ;
     cout << size << " "<<  num_threads << " " << num_blocks << " here" << endl;
     // measure the time
@@ -393,11 +384,15 @@ int main( int argc, char** argv)
     search_kernel<<<num_blocks, num_threads>>>(size, N, value_x_d, value_y_d, index_g, level_list_d, leaf_list_d, centerx_list_d, centery_list_d); 
 
     printf("search kernel finished!\n");
-
+    cudaEventRecord(stop, 0);  cudaEventSynchronize(stop);  cudaEventElapsedTime(&time, start, stop);
+    float search_time = time;
+    num_blocks = (N+ num_threads - 1)/num_threads ;
+    cout << size << " "<<  num_threads << " " << num_blocks << " here" << endl;
     interpolation<<<num_blocks, num_threads>>>(N, value_x_d, value_y_d, index_g, level_list_d,centerx_list_d, centery_list_d, T1_list_d, T2_list_d, T3_list_d, T4_list_d,interp_d);
    
     cudaEventRecord(stop, 0);  cudaEventSynchronize(stop);  cudaEventElapsedTime(&time, start, stop);
 
+    float interpolation_time = time-search_time;
     cudaEventDestroy(start);  cudaEventDestroy(stop);
 
     printf("interpolation kernel finished!\n");
@@ -418,7 +413,8 @@ int main( int argc, char** argv)
     }
   
     //output the time
-     printf("GPU %.1f ms\n", time);
+     //printf("GPU: %.1f ms\n", time);
+     printf("GPU: search_time: %10.5f ms, interpolation_time: %10.5f ms, total_time: %10.5f ms\n", search_time, interpolation_time, search_time + interpolation_time);
      printf("CPU %ld ms\n", (int) (1000.0f * (endtime - starttime) / CLOCKS_PER_SEC));
 
   

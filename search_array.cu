@@ -46,7 +46,7 @@ texture<float, 1, cudaReadModeElementType> texRef;
 texture<float, 1, cudaReadModeElementType> texRef2;
 texture<float, 1, cudaReadModeElementType> valx_t;
 texture<float, 1, cudaReadModeElementType> valy_t;
-//const int max_threads = 512;
+//const int max_threads = 12;
 // input generation
 
 #define MULT 1103515245
@@ -419,21 +419,21 @@ int main( int argc, char** argv)
 
   
     //clean up
-  CUDA_CHK(cudaUnbindTexture,(texRef));
-  CUDA_CHK(cudaUnbindTexture,(texRef2));
+    CUDA_CHK(cudaUnbindTexture,(texRef));
+    CUDA_CHK(cudaUnbindTexture,(texRef2));
+   
+    CUDA_CHK(cudaFree, (level_list_d);  );
+    CUDA_CHK(cudaFree, (leaf_list_d);   );
+    CUDA_CHK(cudaFree, (centerx_list_d););
+    CUDA_CHK(cudaFree, (centery_list_d););
+    CUDA_CHK(cudaFree, (value_x_d));
+    CUDA_CHK(cudaFree, (value_y_d));
+    CUDA_CHK(cudaFree, (index_g));
 
-	CUDA_CHK(cudaFree, (level_list_d);  );
-	CUDA_CHK(cudaFree, (leaf_list_d);   );
-	CUDA_CHK(cudaFree, (centerx_list_d););
-	CUDA_CHK(cudaFree, (centery_list_d););
-	CUDA_CHK(cudaFree, (value_x_d));
-	CUDA_CHK(cudaFree, (value_y_d));
-	CUDA_CHK(cudaFree, (index_g));
-	
-        free(level_list);
-	free(leaf_list);
-	free(centerx_list);
-	free(centery_list);
-	free(value_x);
-	free(value_y);
+    free(level_list);
+    free(leaf_list);
+    free(centerx_list);
+    free(centery_list);
+    free(value_x);
+    free(value_y);
 }
